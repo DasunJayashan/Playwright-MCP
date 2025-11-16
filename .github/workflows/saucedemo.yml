@@ -1,0 +1,68 @@
+name: SauceDemo Tests Only
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'tests/saucedemo.spec.js'
+      - 'pages/**'
+      - 'utils/**'
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  saucedemo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run SauceDemo tests
+        run: npm test tests/saucedemo.spec.js -- --project=chromium
+        continue-on-error: false
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saucedemo-test-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshots
+          path: test-results/
+          retention-days: 7
+
+      - name: Comment test results on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const resultsPath = './playwright-report/index.html';
+            if (fs.existsSync(resultsPath)) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: '✅ SauceDemo tests completed! Check artifacts for detailed report.'
+              });
+            }
